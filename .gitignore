@@ -1,0 +1,31 @@
+# Worktrees
+.worktrees/
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+
+# Cloud service runtime data
+cloud/data/
+
+# Xcode and Swift
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+.swiftpm/
+build/
+
+# Local secrets
+.env
+*.p8
+*.mobileprovision
+*.cer
+*.p12
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

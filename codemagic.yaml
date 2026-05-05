@@ -1,0 +1,67 @@
+workflows:
+  ios-free-sideload:
+    name: iOS Free Sideload IPA Artifact
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "feature/*"
+          include: true
+          source: true
+        - pattern: "main"
+          include: true
+          source: true
+        - pattern: "master"
+          include: true
+          source: true
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT_DIR: ios
+        XCODE_SCHEME: LongScreenshotApp
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          set -euo pipefail
+          brew install xcodegen
+      - name: Run cloud tests
+        script: |
+          set -euo pipefail
+          cd cloud
+          python3 -m pip install -e '.[test]'
+          pytest -q
+      - name: Generate Xcode project
+        script: |
+          set -euo pipefail
+          cd "$XCODE_PROJECT_DIR"
+          xcodegen generate
+      - name: Run shared Swift tests
+        script: |
+          set -euo pipefail
+          cd "$XCODE_PROJECT_DIR"
+          xcodebuild test -scheme LongScreenshotShared -destination 'platform=iOS Simulator,name=iPhone 16'
+      - name: Build unsigned app bundle
+        script: |
+          set -euo pipefail
+          cd "$XCODE_PROJECT_DIR"
+          xcodebuild build \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ../build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Package sideload IPA artifact
+        script: |
+          set -euo pipefail
+          APP_PATH=$(find build/DerivedData -path '*/Release-iphoneos/LongScreenshotApp.app' -type d | head -n 1)
+          test -n "$APP_PATH"
+          rm -rf build/ipa/Payload
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/LongScreenshot.app
+          cd build/ipa
+          zip -r LongScreenshot-unsigned.ipa Payload
+    artifacts:
+      - build/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log

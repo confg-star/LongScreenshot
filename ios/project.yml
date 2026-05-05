@@ -1,0 +1,36 @@
+name: LongScreenshot
+options:
+  bundleIdPrefix: com.longscreenshot
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+targets:
+  LongScreenshotShared:
+    type: framework
+    platform: iOS
+    sources:
+      - LongScreenshotShared
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free.shared
+  LongScreenshotSharedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - LongScreenshotSharedTests
+    dependencies:
+      - target: LongScreenshotShared
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free.sharedTests
+  LongScreenshotApp:
+    type: application
+    platform: iOS
+    sources:
+      - LongScreenshotApp
+    dependencies:
+      - target: LongScreenshotShared
+    info:
+      path: LongScreenshotApp/Info.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free
