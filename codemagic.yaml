@@ -41,7 +41,48 @@ workflows:
         script: |
           set -euo pipefail
           cd "$XCODE_PROJECT_DIR"
-          xcodebuild test -scheme LongScreenshotShared -destination 'platform=iOS Simulator,name=iPhone 16'
+          SIMCTL_RUNTIMES_JSON=$(mktemp)
+          SIMCTL_DEVICE_TYPES_JSON=$(mktemp)
+          trap 'rm -f "$SIMCTL_RUNTIMES_JSON" "$SIMCTL_DEVICE_TYPES_JSON"; if [ -n "${SIM_UDID:-}" ]; then xcrun simctl delete "$SIM_UDID" >/dev/null 2>&1 || true; fi' EXIT
+          xcrun simctl list runtimes iOS --json > "$SIMCTL_RUNTIMES_JSON"
+          xcrun simctl list devicetypes --json > "$SIMCTL_DEVICE_TYPES_JSON"
+          RUNTIME_ID=$(python3 - "$SIMCTL_RUNTIMES_JSON" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as file:
+              runtimes = [
+                  runtime for runtime in json.load(file)["runtimes"]
+                  if runtime.get("isAvailable") and runtime.get("identifier", "").startswith("com.apple.CoreSimulator.SimRuntime.iOS")
+              ]
+          if not runtimes:
+              raise SystemExit("No available iOS simulator runtime found")
+          runtimes.sort(key=lambda runtime: [int(part) for part in runtime.get("version", "0").split(".")])
+          print(runtimes[-1]["identifier"])
+          PY
+          )
+          DEVICE_TYPE_ID=$(python3 - "$SIMCTL_DEVICE_TYPES_JSON" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as file:
+              device_types = json.load(file)["devicetypes"]
+          by_name = {device_type["name"]: device_type["identifier"] for device_type in device_types}
+          for name in ["iPhone 16", "iPhone 15", "iPhone 14", "iPhone 13"]:
+              if name in by_name:
+                  print(by_name[name])
+                  break
+          else:
+              for device_type in device_types:
+                  if device_type["name"].startswith("iPhone"):
+                      print(device_type["identifier"])
+                      break
+              else:
+                  raise SystemExit("No iPhone simulator device type found")
+          PY
+          )
+          SIM_UDID=$(xcrun simctl create LongScreenshotTestSimulator "$DEVICE_TYPE_ID" "$RUNTIME_ID")
+          xcodebuild test -scheme LongScreenshotShared -destination "id=$SIM_UDID"
       - name: Build unsigned app bundle
         script: |
           set -euo pipefail
