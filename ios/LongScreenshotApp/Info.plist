@@ -3,15 +3,10 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>LongScreenshot</string>
+  <string>长截图</string>
   <key>NSPhotoLibraryUsageDescription</key>
-  <string>LongScreenshot lets you choose screenshots to stitch into a long image.</string>
+  <string>长截图需要访问你选择的截图，用于在本机拼接成长图。</string>
   <key>NSPhotoLibraryAddUsageDescription</key>
-  <string>LongScreenshot saves generated long screenshots to your photo library.</string>
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-  </dict>
+  <string>长截图需要把生成的长图保存到系统相册。</string>
 </dict>
 </plist>

@@ -7,10 +7,10 @@ LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截
 ### 功能
 
 - 从 iPhone 相册手动选择多张截图。
-- 按选择顺序上传截图到云端拼接服务。
-- 云端 FastAPI / OpenCV 服务返回拼接后的长图。
-- iOS App 将返回的长图保存到系统相册。
+- 按选择顺序在 iPhone 本地拼接截图。
+- iOS App 将生成的长图保存到系统相册。
 - Codemagic workflow 生成 `LongScreenshot-unsigned.ipa` artifact。
+- Python FastAPI / OpenCV 服务保留为可选的开发和参考工具。
 
 ### 当前限制
 
@@ -18,7 +18,7 @@ LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截
 - CI 产出的 IPA 是 unsigned，不能直接安装到 iPhone。
 - 必须用 Sideloadly、AltStore 或 SideStore 等工具重新签名安装。
 - 免费 Apple ID 签名通常会过期，需要定期重新签名。
-- `127.0.0.1` 在 iPhone 上表示 iPhone 自己；连接 Windows 上运行的拼接服务时，请使用 Windows 的局域网 IP。
+- Python 云端拼接服务仅作为可选的开发、旧版兼容和参考工具；iPhone 正常使用不需要服务器。
 
 ### 项目结构
 
@@ -26,7 +26,7 @@ LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截
 - `ios/`：SwiftUI iOS App 和共享 Swift 工具。
 - `codemagic.yaml`：云端 macOS 构建与 unsigned IPA 打包 workflow。
 
-### 本地运行云端拼接服务
+### 可选：本地运行云端拼接服务
 
 ```bash
 cd cloud
@@ -42,6 +42,8 @@ macOS / Linux shell 激活虚拟环境时使用：
 ```bash
 . .venv/bin/activate
 ```
+
+以下命令仅用于可选开发和参考场景，不是 iPhone App 正常使用流程的一部分。
 
 健康检查：
 
@@ -65,13 +67,15 @@ curl http://127.0.0.1:8000/health
 
 ### iPhone 使用流程
 
-1. 准备 2-5 张有重叠区域的截图。
-2. 打开 LongScreenshot。
-3. 输入 iPhone 能访问到的拼接服务地址，例如 `http://<你的Windows局域网IP>:8000/stitch`。
-4. 按从上到下的顺序选择截图。
-5. 点击导入截图。
-6. 授权保存到相册。
-7. 上传并保存长图。
+1. 用 Codemagic 生成 `LongScreenshot-unsigned.ipa`。
+2. 在 Windows 上用 Sideloadly、AltStore 或 SideStore 重新签名并安装到 iPhone。
+3. 打开 App，点击“选择截图”，按从上到下的顺序选择 2 到 8 张有重叠区域的截图。
+4. 点击“导入所选截图”。
+5. 点击“授权保存到相册”。
+6. 点击“本地拼接并保存最新任务”。
+7. 生成的长截图会保存到系统相册。
+
+当前版本已经改为 iPhone 本地拼接，不需要配置服务器 URL，也不需要在 Windows 上运行云端拼接服务。
 
 ## English
 
@@ -80,10 +84,10 @@ LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / 
 ### Features
 
 - Manually select multiple screenshots from the iPhone photo library.
-- Upload selected screenshots to the cloud stitcher in selection order.
-- Receive a stitched long image from the FastAPI / OpenCV cloud service.
-- Save the returned long image to the system photo library.
+- Stitch screenshots locally on the iPhone in selection order.
+- Save the generated long image to the system photo library.
 - Generate a `LongScreenshot-unsigned.ipa` artifact with Codemagic.
+- Keep the Python FastAPI / OpenCV service as optional developer and reference tooling.
 
 ### Current limitations
 
@@ -91,7 +95,7 @@ LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / 
 - The IPA produced by CI is unsigned and cannot be installed directly on an iPhone.
 - A sideloading tool such as Sideloadly, AltStore, or SideStore must re-sign and install the IPA.
 - Free Apple ID signing usually expires and must be refreshed regularly.
-- `127.0.0.1` on an iPhone points to the iPhone itself. Use the Windows machine's LAN IP when connecting to a stitcher running on Windows.
+- The Python cloud stitcher is optional developer, legacy compatibility, and reference tooling; normal iPhone use does not require a server.
 
 ### Project structure
 
@@ -99,7 +103,7 @@ LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / 
 - `ios/`: SwiftUI iOS app and shared Swift utilities.
 - `codemagic.yaml`: Cloud macOS build and unsigned IPA packaging workflow.
 
-### Run the cloud stitcher locally
+### Optional: run the cloud stitcher locally
 
 ```bash
 cd cloud
@@ -115,6 +119,8 @@ On macOS / Linux shells, activate the virtual environment with:
 ```bash
 . .venv/bin/activate
 ```
+
+The following commands are only for optional developer and reference scenarios; they are not part of the normal iPhone app usage flow.
 
 Health check:
 
@@ -138,10 +144,12 @@ Expected response:
 
 ### iPhone usage flow
 
-1. Prepare 2-5 overlapping screenshots.
-2. Open LongScreenshot.
-3. Enter a stitch endpoint URL reachable from the iPhone, for example `http://<your-windows-lan-ip>:8000/stitch`.
-4. Choose screenshots in top-to-bottom order.
-5. Import the screenshots.
-6. Grant photo save permission.
-7. Upload and save the long image.
+1. Build `LongScreenshot-unsigned.ipa` with Codemagic.
+2. Re-sign and install it on the iPhone from Windows with Sideloadly, AltStore, or SideStore.
+3. Open the app, tap “选择截图”, and choose 2 to 8 overlapping screenshots in top-to-bottom order.
+4. Tap “导入所选截图”.
+5. Tap “授权保存到相册”.
+6. Tap “本地拼接并保存最新任务”.
+7. The generated long screenshot is saved to Photos.
+
+The current iPhone app stitches locally on-device. It does not require a server URL or a Windows-hosted stitching service.

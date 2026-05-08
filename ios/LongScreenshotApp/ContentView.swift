@@ -3,8 +3,7 @@ import SwiftUI
 import LongScreenshotShared
 
 struct ContentView: View {
-    @State private var serverURLText = LongScreenshotConstants.defaultServerURL.absoluteString
-    @State private var statusText = "Select screenshots in order, upload them, then save the stitched result."
+    @State private var statusText = "请选择要拼接的截图，并按从上到下的顺序选择。"
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var manifests: [ImportSessionManifest] = []
     private let photoSaver = PhotoSaver()
@@ -12,52 +11,44 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Server") {
-                    TextField("Stitch endpoint", text: $serverURLText)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                    Text("For device testing, 127.0.0.1 means the iPhone itself; enter your computer's LAN IP.")
-                        .font(.footnote)
-                }
-
-                Section("Images") {
-                    PhotosPicker(selection: $selectedItems, maxSelectionCount: 0, selectionBehavior: .ordered, matching: .images) {
-                        Text("Choose screenshots")
+                Section("截图") {
+                    PhotosPicker(selection: $selectedItems, maxSelectionCount: 8, selectionBehavior: .ordered, matching: .images) {
+                        Text("选择截图")
                     }
-                    Text("Selected order is the upload order.")
+                    Text("请按长图从上到下的顺序选择，建议一次选择 2 到 8 张截图。")
                         .font(.footnote)
-                    Button("Import selected screenshots") {
+                    Button("导入所选截图") {
                         Task { await importSelectedImages() }
                     }
                 }
 
-                Section("Process") {
-                    Button("Grant photo save permission") {
+                Section("处理") {
+                    Button("授权保存到相册") {
                         Task { await grantPhotoPermission() }
                     }
-                    Button("Upload newest imported session and save") {
+                    Button("本地拼接并保存最新任务") {
                         Task { await processNewestReadySession() }
                     }
                     Text(statusText).font(.footnote)
                 }
 
-                Section("Recent sessions") {
+                Section("最近任务") {
                     ForEach(manifests, id: \.sessionID) { manifest in
                         VStack(alignment: .leading) {
                             Text(manifest.sessionID).font(.caption)
-                            Text("Status: \(manifest.status.rawValue), images: \(manifest.images.count)").font(.caption2)
+                            Text("状态：\(localizedStatus(manifest.status))，图片：\(manifest.images.count) 张").font(.caption2)
                         }
                     }
                 }
             }
-            .navigationTitle("LongScreenshot")
+            .navigationTitle("长截图")
             .onAppear { refreshSessions() }
         }
     }
 
     private func grantPhotoPermission() async {
         let granted = await photoSaver.requestAddOnlyAuthorization()
-        statusText = granted ? "Photo save permission granted." : "Photo save permission not granted."
+        statusText = granted ? "已获得相册保存权限。" : "未获得相册保存权限，请在系统设置中允许保存照片。"
     }
 
     private func importSelectedImages() async {
@@ -69,15 +60,19 @@ struct ContentView: View {
                 }
             }
             guard !imageData.isEmpty else {
-                statusText = "No images selected."
+                statusText = "还没有选择截图。"
+                return
+            }
+            guard imageData.count >= 2 else {
+                statusText = "请至少选择 2 张有重叠区域的截图。"
                 return
             }
             let store = try SandboxSessionStore()
             let manifest = try ImageImportStore(store: store).createSession(from: imageData)
             refreshSessions()
-            statusText = "Imported \(manifest.images.count) images."
+            statusText = "已导入 \(manifest.images.count) 张截图。"
         } catch {
-            statusText = error.localizedDescription
+            statusText = "导入失败：\(error.localizedDescription)"
         }
     }
 
@@ -86,37 +81,52 @@ struct ContentView: View {
             let store = try SandboxSessionStore()
             manifests = try store.listManifests()
         } catch {
-            statusText = error.localizedDescription
+            statusText = "读取任务失败：\(error.localizedDescription)"
         }
     }
 
     private func processNewestReadySession() async {
         var processingManifest: ImportSessionManifest?
         do {
-            guard let stitchURL = URL(string: serverURLText) else {
-                statusText = "Invalid stitch endpoint URL."
-                return
-            }
             let store = try SandboxSessionStore()
-            guard var manifest = try store.listManifests().first(where: { ($0.status == .ready || $0.status == .failed) && !$0.images.isEmpty }) else {
-                statusText = "No imported session is ready or failed."
+            guard var manifest = try store.listManifests().first(where: { manifest in
+                let hasSavedResult = manifest.resultFileName != nil && (manifest.status == .stitched || manifest.status == .failed)
+                return ((manifest.status == .ready || manifest.status == .failed) && !manifest.images.isEmpty) || hasSavedResult
+            }) else {
+                statusText = "没有可处理的截图任务，请先导入截图。"
                 return
             }
-            processingManifest = manifest
 
-            manifest.status = .uploading
-            manifest.failureReason = nil
-            try store.save(manifest)
             processingManifest = manifest
-            let resultData = try await UploadClient(stitchURL: stitchURL).upload(manifest: manifest, store: store)
+            let resultData: Data
+            var savedManifest: ImportSessionManifest
+
+            if let resultFileName = manifest.resultFileName,
+               manifest.status == .stitched || manifest.status == .failed {
+                let resultURL = store.resultURL(sessionID: manifest.sessionID, fileName: resultFileName)
+                if FileManager.default.fileExists(atPath: resultURL.path) {
+                    resultData = try Data(contentsOf: resultURL)
+                    savedManifest = manifest
+                    statusText = "正在保存已拼接的长截图。"
+                } else {
+                    manifest.resultFileName = nil
+                    let result = try await stitchLocally(manifest: manifest, store: store)
+                    resultData = result.data
+                    savedManifest = result.manifest
+                    processingManifest = savedManifest
+                }
+            } else {
+                let result = try await stitchLocally(manifest: manifest, store: store)
+                resultData = result.data
+                savedManifest = result.manifest
+                processingManifest = savedManifest
+            }
+
             try await photoSaver.saveJPEG(resultData)
-            let resultFileName = "result.jpg"
-            try resultData.write(to: store.resultURL(sessionID: manifest.sessionID, fileName: resultFileName), options: [.atomic])
-            manifest.resultFileName = resultFileName
-            manifest.status = .saved
-            try store.save(manifest)
+            savedManifest.status = .saved
+            try store.save(savedManifest)
             refreshSessions()
-            statusText = "Saved long screenshot for \(manifest.sessionID)."
+            statusText = "长截图已保存到相册。"
         } catch {
             if var failedManifest = processingManifest, let store = try? SandboxSessionStore() {
                 failedManifest.status = .failed
@@ -124,7 +134,40 @@ struct ContentView: View {
                 try? store.save(failedManifest)
                 refreshSessions()
             }
-            statusText = error.localizedDescription
+            statusText = "处理失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func stitchLocally(manifest: ImportSessionManifest, store: SandboxSessionStore) async throws -> (data: Data, manifest: ImportSessionManifest) {
+        var processingManifest = manifest
+        processingManifest.status = .uploading
+        processingManifest.failureReason = nil
+        try store.save(processingManifest)
+        refreshSessions()
+        statusText = "正在本地拼接，请稍候。"
+
+        let rootDirectory = store.rootDirectory
+        let manifestToStitch = processingManifest
+        return try await Task.detached(priority: .userInitiated) {
+            let detachedStore = try SandboxSessionStore(rootDirectory: rootDirectory)
+            return try LocalSessionProcessor(store: detachedStore).stitch(manifest: manifestToStitch)
+        }.value
+    }
+
+    private func localizedStatus(_ status: ImportSessionStatus) -> String {
+        switch status {
+        case .draft:
+            return "草稿"
+        case .ready:
+            return "待处理"
+        case .uploading:
+            return "处理中"
+        case .stitched:
+            return "已拼接"
+        case .saved:
+            return "已保存"
+        case .failed:
+            return "失败"
         }
     }
 }
