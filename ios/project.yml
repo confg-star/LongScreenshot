@@ -34,3 +34,15 @@ targets:
       path: LongScreenshotApp/Info.plist
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free
+schemes:
+  LongScreenshotShared:
+    build:
+      targets:
+        LongScreenshotShared: all
+    test:
+      targets:
+        - LongScreenshotSharedTests
+  LongScreenshotApp:
+    build:
+      targets:
+        LongScreenshotApp: all
