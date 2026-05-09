@@ -90,6 +90,15 @@ struct ContentView: View {
                     Text(statusText).font(.footnote)
                 }
 
+                Section("实验录屏") {
+                    Label("控制中心录屏入口验证", systemImage: "record.circle")
+                        .font(.headline)
+
+                    Text("下拉控制中心，长按录屏按钮，尝试选择“长截图录屏”。当前实验只验证入口能否出现和启动，录屏结束后暂不会自动生成长截图。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("最近任务") {
                     ForEach(manifests, id: \.sessionID) { manifest in
                         VStack(alignment: .leading) {
