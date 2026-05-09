@@ -1,34 +1,77 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 import LongScreenshotShared
 
 struct ContentView: View {
-    @State private var statusText = "请选择要拼接的截图，并按从上到下的顺序选择。"
+    @State private var statusText = "点击“导入截图”，按从上到下的顺序选择截图。"
     @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var previewImages: [UIImage] = []
     @State private var manifests: [ImportSessionManifest] = []
+    @State private var isImporting = false
+    @State private var isProcessing = false
+    @State private var importGeneration = 0
     private let photoSaver = PhotoSaver()
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("截图") {
-                    PhotosPicker(selection: $selectedItems, maxSelectionCount: 8, selectionBehavior: .ordered, matching: .images) {
-                        Text("选择截图")
+                    PhotosPicker(selection: Binding(
+                        get: { selectedItems },
+                        set: { newItems in
+                            selectedItems = newItems
+                            guard !newItems.isEmpty else { return }
+                            importGeneration += 1
+                            let generation = importGeneration
+                            Task { await importSelectedImages(from: newItems, generation: generation) }
+                        }
+                    ), maxSelectionCount: 8, selectionBehavior: .ordered, matching: .images) {
+                        Label(isImporting ? "正在导入..." : "导入截图", systemImage: "photo.on.rectangle")
                     }
-                    Text("请按长图从上到下的顺序选择，建议一次选择 2 到 8 张截图。")
+                    .disabled(isImporting || isProcessing)
+
+                    Text("请选择 2 到 8 张截图，并按长图从上到下的顺序选择。两张图之间保留一小段重复区域，不要选择几乎完全相同的截图。")
                         .font(.footnote)
-                    Button("导入所选截图") {
-                        Task { await importSelectedImages() }
+
+                    if previewImages.isEmpty {
+                        Text("导入后会在这里预览所选截图。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 10) {
+                                ForEach(Array(previewImages.enumerated()), id: \.offset) { index, image in
+                                    VStack(spacing: 4) {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 96, height: 160)
+                                            .background(Color.secondary.opacity(0.08))
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .stroke(Color.secondary.opacity(0.25))
+                                            )
+                                        Text("第 \(index + 1) 张")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
                 }
 
                 Section("处理") {
-                    Button("授权保存到相册") {
-                        Task { await grantPhotoPermission() }
-                    }
-                    Button("本地拼接并保存最新任务") {
+                    Button {
                         Task { await processNewestReadySession() }
+                    } label: {
+                        Label(isProcessing ? "正在拼接..." : "拼接保存", systemImage: "square.and.arrow.down")
                     }
+                    .disabled(isImporting || isProcessing)
+
                     Text(statusText).font(.footnote)
                 }
 
@@ -46,19 +89,26 @@ struct ContentView: View {
         }
     }
 
-    private func grantPhotoPermission() async {
-        let granted = await photoSaver.requestAddOnlyAuthorization()
-        statusText = granted ? "已获得相册保存权限。" : "未获得相册保存权限，请在系统设置中允许保存照片。"
-    }
+    @MainActor
+    private func importSelectedImages(from items: [PhotosPickerItem], generation: Int) async {
+        isImporting = true
+        previewImages = []
+        defer {
+            if generation == importGeneration {
+                isImporting = false
+                selectedItems = []
+            }
+        }
 
-    private func importSelectedImages() async {
         do {
             var imageData: [Data] = []
-            for item in selectedItems {
+            for item in items {
                 if let data = try await item.loadTransferable(type: Data.self) {
+                    guard generation == importGeneration else { return }
                     imageData.append(data)
                 }
             }
+            guard generation == importGeneration else { return }
             guard !imageData.isEmpty else {
                 statusText = "还没有选择截图。"
                 return
@@ -67,11 +117,15 @@ struct ContentView: View {
                 statusText = "请至少选择 2 张有重叠区域的截图。"
                 return
             }
+
             let store = try SandboxSessionStore()
             let manifest = try ImageImportStore(store: store).createSession(from: imageData)
+            guard generation == importGeneration else { return }
+            previewImages = imageData.compactMap { UIImage(data: $0) }
             refreshSessions()
-            statusText = "已导入 \(manifest.images.count) 张截图。"
+            statusText = "已导入 \(manifest.images.count) 张截图，请确认预览顺序后点击“拼接保存”。"
         } catch {
+            guard generation == importGeneration else { return }
             statusText = "导入失败：\(error.localizedDescription)"
         }
     }
@@ -85,13 +139,23 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
     private func processNewestReadySession() async {
+        isProcessing = true
+        defer { isProcessing = false }
+
         var processingManifest: ImportSessionManifest?
         do {
+            let granted = await photoSaver.requestAddOnlyAuthorization()
+            guard granted else {
+                statusText = "未获得相册保存权限，请在系统设置中允许保存照片。"
+                return
+            }
+
             let store = try SandboxSessionStore()
             guard var manifest = try store.listManifests().first(where: { manifest in
                 let hasSavedResult = manifest.resultFileName != nil && (manifest.status == .stitched || manifest.status == .failed)
-                return ((manifest.status == .ready || manifest.status == .failed) && !manifest.images.isEmpty) || hasSavedResult
+                return ((manifest.status == .ready || manifest.status == .failed) && manifest.images.count >= 2) || hasSavedResult
             }) else {
                 statusText = "没有可处理的截图任务，请先导入截图。"
                 return
@@ -138,6 +202,7 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
     private func stitchLocally(manifest: ImportSessionManifest, store: SandboxSessionStore) async throws -> (data: Data, manifest: ImportSessionManifest) {
         var processingManifest = manifest
         processingManifest.status = .uploading

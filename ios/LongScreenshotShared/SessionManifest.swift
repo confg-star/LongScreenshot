@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ImportSessionStatus: String, Codable, Equatable {
+public enum ImportSessionStatus: String, Codable, Equatable, Sendable {
     case draft
     case ready
     case uploading
@@ -9,7 +9,7 @@ public enum ImportSessionStatus: String, Codable, Equatable {
     case failed
 }
 
-public struct ImportedImageRecord: Codable, Equatable {
+public struct ImportedImageRecord: Codable, Equatable, Sendable {
     public let fileName: String
     public let order: Int
 
@@ -19,7 +19,7 @@ public struct ImportedImageRecord: Codable, Equatable {
     }
 }
 
-public struct ImportSessionManifest: Codable, Equatable {
+public struct ImportSessionManifest: Codable, Equatable, Sendable {
     public let sessionID: String
     public let createdAt: Date
     public var status: ImportSessionStatus

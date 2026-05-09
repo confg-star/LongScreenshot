@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import UIKit
 
-public struct LocalImageStitchResult: Equatable {
+public struct LocalImageStitchResult: Equatable, Sendable {
     public let jpegData: Data
     public let overlaps: [Int]
 
@@ -12,27 +12,33 @@ public struct LocalImageStitchResult: Equatable {
     }
 }
 
-public enum LocalImageStitchingError: Error, LocalizedError, Equatable {
+public enum LocalImageStitchingError: Error, LocalizedError, Equatable, Sendable {
     case emptyImages
+    case notEnoughImages
     case unreadableImage
     case differentWidths
+    case insufficientNewContent
     case renderingFailed
 
     public var errorDescription: String? {
         switch self {
         case .emptyImages:
             return "没有可拼接的图片。"
+        case .notEnoughImages:
+            return "请至少选择 2 张有重叠区域的截图。"
         case .unreadableImage:
             return "无法读取图片数据。"
         case .differentWidths:
             return "图片宽度不一致，无法拼接。"
+        case .insufficientNewContent:
+            return "后续截图没有检测到新增内容，请重新选择有重叠且继续向下滚动后的截图。"
         case .renderingFailed:
             return "图片渲染失败。"
         }
     }
 }
 
-public struct LocalImageStitcher {
+public struct LocalImageStitcher: Sendable {
     public init() {}
 
     public func stitchImageData(
@@ -44,12 +50,15 @@ public struct LocalImageStitcher {
         guard !imageData.isEmpty else {
             throw LocalImageStitchingError.emptyImages
         }
+        guard imageData.count >= 2 else {
+            throw LocalImageStitchingError.notEnoughImages
+        }
 
         let images = try imageData.map { data -> RGBAImage in
-            guard let image = UIImage(data: data)?.cgImage else {
+            guard let image = UIImage(data: data) else {
                 throw LocalImageStitchingError.unreadableImage
             }
-            return try RGBAImage(cgImage: image)
+            return try RGBAImage(image: image)
         }
 
         guard let first = images.first else {
@@ -67,6 +76,10 @@ public struct LocalImageStitcher {
         for index in images.indices.dropFirst() {
             let previous = images[index - 1]
             let current = images[index]
+            if isVisuallyDuplicate(previous, current) {
+                throw LocalImageStitchingError.insufficientNewContent
+            }
+
             let overlap = detectOverlap(
                 previous: previous,
                 current: current,
@@ -76,11 +89,14 @@ public struct LocalImageStitcher {
             overlaps.append(overlap)
 
             let startRow = min(overlap, current.height)
-            if startRow < current.height {
-                let startByte = startRow * current.bytesPerRow
-                stitchedBytes.append(contentsOf: current.bytes[startByte...])
-                stitchedHeight += current.height - startRow
+            let newRows = current.height - startRow
+            guard newRows >= minimumNewContentRows(for: current.height, minOverlap: minOverlap) else {
+                throw LocalImageStitchingError.insufficientNewContent
             }
+
+            let startByte = startRow * current.bytesPerRow
+            stitchedBytes.append(contentsOf: current.bytes[startByte...])
+            stitchedHeight += current.height - startRow
         }
 
         guard let cgImage = makeCGImage(width: first.width, height: stitchedHeight, bytes: stitchedBytes),
@@ -97,7 +113,8 @@ public struct LocalImageStitcher {
         minOverlap: Int,
         maxOverlap: Int?
     ) -> Int {
-        let highestPossibleOverlap = min(previous.height, current.height, maxOverlap ?? min(previous.height, current.height))
+        let maximumAvailableOverlap = min(previous.height, current.height)
+        let highestPossibleOverlap = min(maximumAvailableOverlap, maxOverlap ?? maximumAvailableOverlap)
         let lowestPossibleOverlap = min(max(0, minOverlap), highestPossibleOverlap)
 
         guard highestPossibleOverlap > 0 else {
@@ -121,6 +138,14 @@ public struct LocalImageStitcher {
         }
 
         return bestOverlap
+    }
+
+    private func isVisuallyDuplicate(_ previous: RGBAImage, _ current: RGBAImage) -> Bool {
+        previous.width == current.width && previous.height == current.height && previous.bytes == current.bytes
+    }
+
+    private func minimumNewContentRows(for height: Int, minOverlap: Int) -> Int {
+        min(height, max(1, minOverlap))
     }
 
     private func sampledLumaDifference(previous: RGBAImage, current: RGBAImage, overlap: Int) -> Double {
@@ -186,7 +211,11 @@ private struct RGBAImage {
     let bytesPerRow: Int
     let bytes: [UInt8]
 
-    init(cgImage: CGImage) throws {
+    init(image: UIImage) throws {
+        guard let cgImage = image.normalizedCGImage else {
+            throw LocalImageStitchingError.unreadableImage
+        }
+
         self.width = cgImage.width
         self.height = cgImage.height
         self.bytesPerRow = cgImage.width * 4
@@ -210,5 +239,32 @@ private struct RGBAImage {
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
         }
         self.bytes = buffer
+    }
+}
+
+private extension UIImage {
+    var normalizedCGImage: CGImage? {
+        guard imageOrientation != .up else {
+            return cgImage
+        }
+
+        guard let cgImage else {
+            return nil
+        }
+
+        let size: CGSize
+        switch imageOrientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            size = CGSize(width: CGFloat(cgImage.height), height: CGFloat(cgImage.width))
+        default:
+            size = CGSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
+        }
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
+        }.cgImage
     }
 }

@@ -22,7 +22,7 @@ final class LocalImageStitcherTests: XCTestCase {
 
     func testUsesMinimumOverlapWhenRegionsAreUniform() throws {
         let first = try makeImageData(rows: Array(repeating: white, count: 200), width: 4)
-        let second = try makeImageData(rows: Array(repeating: white, count: 200), width: 4)
+        let second = try makeImageData(rows: Array(repeating: white, count: 199) + [cyan], width: 4)
 
         let result = try LocalImageStitcher().stitchImageData(
             [first, second],
@@ -35,6 +35,67 @@ final class LocalImageStitcherTests: XCTestCase {
         XCTAssertEqual(outputImage.height, 380)
     }
 
+    func testNormalizesImageOrientationBeforeStitching() throws {
+        let first = try makeOrientedImageData(rows: [red, green, blue], width: 2, orientation: .right)
+        let second = try makeImageData(rows: [blue, yellow], width: 3)
+
+        let result = try LocalImageStitcher().stitchImageData(
+            [first, second],
+            minOverlap: 1,
+            maxOverlap: 1,
+            compressionQuality: 1.0
+        )
+
+        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        XCTAssertEqual(outputImage.width, 3)
+        XCTAssertEqual(outputImage.height, 3)
+    }
+
+    func testRejectsSingleImageInput() throws {
+        let image = try makeImageData(rows: [red, green, blue], width: 3)
+
+        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([image], minOverlap: 1)) { error in
+            XCTAssertEqual(error as? LocalImageStitchingError, .notEnoughImages)
+        }
+    }
+
+    func testRejectsAdditionalImageWithoutNewContent() throws {
+        let image = try makeImageData(rows: [red, green, blue, yellow], width: 3)
+
+        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([image, image], minOverlap: 1)) { error in
+            XCTAssertEqual(error as? LocalImageStitchingError, .insufficientNewContent)
+        }
+    }
+
+    func testRejectsNearDuplicateImageWithoutMeaningfulNewContent() throws {
+        let first = try makeImageData(rows: [red, green, blue, yellow], width: 3)
+        let second = try makeImageData(rows: [red, green, blue, cyan], width: 3)
+
+        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([first, second], minOverlap: 1)) { error in
+            XCTAssertEqual(error as? LocalImageStitchingError, .insufficientNewContent)
+        }
+    }
+
+    func testRejectsNearDuplicateImageWithOnlyHeaderChange() throws {
+        let first = try makeImageData(rows: [red, green, blue, yellow], width: 3)
+        let second = try makeImageData(rows: [cyan, green, blue, yellow], width: 3)
+
+        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([first, second], minOverlap: 1)) { error in
+            XCTAssertEqual(error as? LocalImageStitchingError, .insufficientNewContent)
+        }
+    }
+
+    func testAllowsLargeOverlapWhenThereIsEnoughNewContent() throws {
+        let first = try makeImageData(rows: [red, green, blue, yellow], width: 3)
+        let second = try makeImageData(rows: [green, blue, yellow, cyan, magenta], width: 3)
+
+        let result = try LocalImageStitcher().stitchImageData([first, second], minOverlap: 1, compressionQuality: 1.0)
+
+        XCTAssertEqual(result.overlaps, [3])
+        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        XCTAssertEqual(outputImage.height, 6)
+    }
+
     func testRejectsEmptyInput() {
         XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([])) { error in
             XCTAssertEqual(error as? LocalImageStitchingError, .emptyImages)
@@ -42,7 +103,9 @@ final class LocalImageStitcherTests: XCTestCase {
     }
 
     func testRejectsInvalidImageData() {
-        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([Data([0x00, 0x01, 0x02])])) { error in
+        let invalidImageData = Data([0x00, 0x01, 0x02])
+
+        XCTAssertThrowsError(try LocalImageStitcher().stitchImageData([invalidImageData, invalidImageData])) { error in
             XCTAssertEqual(error as? LocalImageStitchingError, .unreadableImage)
         }
     }
@@ -72,6 +135,16 @@ private let magenta = TestRGB(r: 255, g: 0, b: 255)
 private let white = TestRGB(r: 255, g: 255, b: 255)
 
 private func makeImageData(rows: [TestRGB], width: Int) throws -> Data {
+    let image = try makeCGImage(rows: rows, width: width)
+    return try XCTUnwrap(UIImage(cgImage: image).pngData())
+}
+
+private func makeOrientedImageData(rows: [TestRGB], width: Int, orientation: UIImage.Orientation) throws -> Data {
+    let image = try makeCGImage(rows: rows, width: width)
+    return try XCTUnwrap(UIImage(cgImage: image, scale: 1, orientation: orientation).jpegData(compressionQuality: 1.0))
+}
+
+private func makeCGImage(rows: [TestRGB], width: Int) throws -> CGImage {
     var bytes: [UInt8] = []
     for row in rows {
         for _ in 0..<width {
@@ -85,7 +158,7 @@ private func makeImageData(rows: [TestRGB], width: Int) throws -> Data {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     let provider = CGDataProvider(data: Data(bytes) as CFData)
     let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-    let image = try XCTUnwrap(CGImage(
+    return try XCTUnwrap(CGImage(
         width: width,
         height: rows.count,
         bitsPerComponent: 8,
@@ -98,5 +171,4 @@ private func makeImageData(rows: [TestRGB], width: Int) throws -> Data {
         shouldInterpolate: false,
         intent: .defaultIntent
     ))
-    return try XCTUnwrap(UIImage(cgImage: image).pngData())
 }

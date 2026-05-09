@@ -69,11 +69,10 @@ curl http://127.0.0.1:8000/health
 
 1. 用 Codemagic 生成 `LongScreenshot-unsigned.ipa`。
 2. 在 Windows 上用 Sideloadly、AltStore 或 SideStore 重新签名并安装到 iPhone。
-3. 打开 App，点击“选择截图”，按从上到下的顺序选择 2 到 8 张有重叠区域的截图。
-4. 点击“导入所选截图”。
-5. 点击“授权保存到相册”。
-6. 点击“本地拼接并保存最新任务”。
-7. 生成的长截图会保存到系统相册。
+3. 打开 App，点击“导入截图”，按从上到下的顺序选择 2 到 8 张有重叠区域的截图。
+4. 导入后在界面预览截图顺序。
+5. 点击“拼接保存”，按提示授权保存到相册。
+6. 生成的长截图会保存到系统相册。
 
 当前版本已经改为 iPhone 本地拼接，不需要配置服务器 URL，也不需要在 Windows 上运行云端拼接服务。
 
@@ -146,10 +145,9 @@ Expected response:
 
 1. Build `LongScreenshot-unsigned.ipa` with Codemagic.
 2. Re-sign and install it on the iPhone from Windows with Sideloadly, AltStore, or SideStore.
-3. Open the app, tap “选择截图”, and choose 2 to 8 overlapping screenshots in top-to-bottom order.
-4. Tap “导入所选截图”.
-5. Tap “授权保存到相册”.
-6. Tap “本地拼接并保存最新任务”.
-7. The generated long screenshot is saved to Photos.
+3. Open the app, tap “导入截图”, and choose 2 to 8 overlapping screenshots in top-to-bottom order.
+4. Preview the imported screenshot order in the app.
+5. Tap “拼接保存” and grant photo save permission when prompted.
+6. The generated long screenshot is saved to Photos.
 
 The current iPhone app stitches locally on-device. It does not require a server URL or a Windows-hosted stitching service.
