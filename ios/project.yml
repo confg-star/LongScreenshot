@@ -25,6 +25,15 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free.sharedTests
       GENERATE_INFOPLIST_FILE: YES
+  LongScreenshotBroadcastUploadExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - LongScreenshotBroadcastUploadExtension
+    info:
+      path: LongScreenshotBroadcastUploadExtension/Info.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free.broadcast
   LongScreenshotApp:
     type: application
     platform: iOS
@@ -32,6 +41,8 @@ targets:
       - LongScreenshotApp
     dependencies:
       - target: LongScreenshotShared
+      - target: LongScreenshotBroadcastUploadExtension
+        embed: true
     info:
       path: LongScreenshotApp/Info.plist
     settings:
@@ -49,3 +60,4 @@ schemes:
     build:
       targets:
         LongScreenshotApp: all
+        LongScreenshotBroadcastUploadExtension: all
