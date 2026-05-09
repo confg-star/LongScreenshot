@@ -15,14 +15,18 @@ final class LocalImageStitcherTests: XCTestCase {
         )
 
         XCTAssertEqual(result.overlaps, [2])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.width, 3)
         XCTAssertEqual(outputImage.height, 6)
     }
 
     func testUsesMinimumOverlapWhenRegionsAreUniform() throws {
-        let first = try makeImageData(rows: Array(repeating: white, count: 200), width: 4)
-        let second = try makeImageData(rows: Array(repeating: white, count: 199) + [cyan], width: 4)
+        let firstRows: [TestRGB] = Array(repeating: white, count: 200)
+        var secondRows: [TestRGB] = Array(repeating: white, count: 199)
+        secondRows.append(cyan)
+        let first = try makeImageData(rows: firstRows, width: 4)
+        let second = try makeImageData(rows: secondRows, width: 4)
 
         let result = try LocalImageStitcher().stitchImageData(
             [first, second],
@@ -31,7 +35,8 @@ final class LocalImageStitcherTests: XCTestCase {
         )
 
         XCTAssertEqual(result.overlaps, [20])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.height, 380)
     }
 
@@ -46,7 +51,8 @@ final class LocalImageStitcherTests: XCTestCase {
             compressionQuality: 1.0
         )
 
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.width, 3)
         XCTAssertEqual(outputImage.height, 3)
     }
@@ -100,15 +106,19 @@ final class LocalImageStitcherTests: XCTestCase {
         let result = try LocalImageStitcher().stitchImageData([first, second], minOverlap: 1, compressionQuality: 1.0)
 
         XCTAssertEqual(result.overlaps, [3])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.height, 6)
     }
 
     func testStitchesThreeSequentialImagesWithoutSwallowingLastImage() throws {
         let rows = uniqueRows(count: 14)
-        let first = try makeImageData(rows: Array(rows[0..<6]), width: 4)
-        let second = try makeImageData(rows: Array(rows[4..<10]), width: 4)
-        let third = try makeImageData(rows: Array(rows[8..<14]), width: 4)
+        let firstRows: [TestRGB] = Array(rows[0..<6])
+        let secondRows: [TestRGB] = Array(rows[4..<10])
+        let thirdRows: [TestRGB] = Array(rows[8..<14])
+        let first = try makeImageData(rows: firstRows, width: 4)
+        let second = try makeImageData(rows: secondRows, width: 4)
+        let third = try makeImageData(rows: thirdRows, width: 4)
 
         let result = try LocalImageStitcher().stitchImageData(
             [first, second, third],
@@ -117,16 +127,21 @@ final class LocalImageStitcherTests: XCTestCase {
         )
 
         XCTAssertEqual(result.overlaps, [2, 2])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.height, 14)
     }
 
     func testStitchesFourSequentialImagesWithRepeatedSimpleRows() throws {
         let rows = uniqueRows(count: 8)
-        let first = try makeImageData(rows: [white, white, rows[0], rows[1], rows[2], rows[3]], width: 4)
-        let second = try makeImageData(rows: [rows[2], rows[3], white, white, rows[4], rows[5]], width: 4)
-        let third = try makeImageData(rows: [rows[4], rows[5], white, white, rows[6], rows[7]], width: 4)
-        let fourth = try makeImageData(rows: [rows[6], rows[7], white, white, cyan, magenta], width: 4)
+        let firstRows: [TestRGB] = [white, white, rows[0], rows[1], rows[2], rows[3]]
+        let secondRows: [TestRGB] = [rows[2], rows[3], white, white, rows[4], rows[5]]
+        let thirdRows: [TestRGB] = [rows[4], rows[5], white, white, rows[6], rows[7]]
+        let fourthRows: [TestRGB] = [rows[6], rows[7], white, white, cyan, magenta]
+        let first = try makeImageData(rows: firstRows, width: 4)
+        let second = try makeImageData(rows: secondRows, width: 4)
+        let third = try makeImageData(rows: thirdRows, width: 4)
+        let fourth = try makeImageData(rows: fourthRows, width: 4)
 
         let result = try LocalImageStitcher().stitchImageData(
             [first, second, third, fourth],
@@ -135,7 +150,8 @@ final class LocalImageStitcherTests: XCTestCase {
         )
 
         XCTAssertEqual(result.overlaps, [2, 2, 2])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.height, 18)
     }
 
@@ -174,7 +190,8 @@ final class LocalImageStitcherTests: XCTestCase {
         )
 
         XCTAssertEqual(result.overlaps, [1])
-        let outputImage = try XCTUnwrap(UIImage(data: result.jpegData)?.cgImage)
+        let outputUIImage = try XCTUnwrap(UIImage(data: result.jpegData))
+        let outputImage = try XCTUnwrap(outputUIImage.cgImage)
         XCTAssertEqual(outputImage.width, 3)
         XCTAssertEqual(outputImage.height, 4)
     }
@@ -226,9 +243,9 @@ private func makeCGImage(rows: [TestRGB], width: Int) throws -> CGImage {
     }
 
     let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let provider = CGDataProvider(data: Data(bytes) as CFData)
+    let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
     let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-    return try XCTUnwrap(CGImage(
+    let image = CGImage(
         width: width,
         height: rows.count,
         bitsPerComponent: 8,
@@ -236,9 +253,10 @@ private func makeCGImage(rows: [TestRGB], width: Int) throws -> CGImage {
         bytesPerRow: width * 4,
         space: colorSpace,
         bitmapInfo: bitmapInfo,
-        provider: try XCTUnwrap(provider),
+        provider: provider,
         decode: nil,
         shouldInterpolate: false,
         intent: .defaultIntent
-    ))
+    )
+    return try XCTUnwrap(image)
 }
