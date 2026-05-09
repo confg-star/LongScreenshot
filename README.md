@@ -2,7 +2,7 @@
 
 ## 中文
 
-LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截图 MVP。它不依赖付费 Apple Developer Program，也不包含 ReplayKit 录屏扩展。当前版本的目标是：在云端 macOS runner 构建出可下载的 unsigned IPA，然后在 Windows 上用 Sideloadly、AltStore 或 SideStore 重新签名并安装到 iPhone。
+LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截图 MVP。当前可用主路径仍然是手动导入截图并在 iPhone 本地拼接；同时包含一个实验性、最小化的 ReplayKit 控制中心录屏入口，仅用于验证系统目标发现和启动。当前版本的目标是：在云端 macOS runner 构建出可下载的 unsigned IPA，然后在 Windows 上用 Sideloadly、AltStore 或 SideStore 重新签名并安装到 iPhone。
 
 ### 功能
 
@@ -76,12 +76,13 @@ curl http://127.0.0.1:8000/health
 5. 点击“拼接保存”，按提示授权保存到相册。
 6. 如果截图宽度不一致，App 会提示是否按第一张截图宽度等比缩放后继续拼接。
 7. 生成的长截图会保存到系统相册。
+8. 可选验证：长按控制中心的屏幕录制按钮，查看录屏目标中是否出现“长截图录屏”；该实验入口目前不会在录屏结束后自动生成长截图。
 
 当前版本已经改为 iPhone 本地拼接，不需要配置服务器 URL，也不需要在 Windows 上运行云端拼接服务。
 
 ## English
 
-LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / free-account sideloading path. It does not require a paid Apple Developer Program account and does not include a ReplayKit recording extension. The current goal is to build an unsigned IPA on a cloud macOS runner, then re-sign and install it from Windows with Sideloadly, AltStore, or SideStore.
+LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / free-account sideloading path. The current usable path remains manual screenshot import and local stitching on the iPhone, with an experimental/minimal ReplayKit Control Center entry-point included only for discovery and startup validation. The current goal is to build an unsigned IPA on a cloud macOS runner, then re-sign and install it from Windows with Sideloadly, AltStore, or SideStore.
 
 ### Features
 
@@ -155,5 +156,6 @@ Expected response:
 5. Tap “拼接保存” and grant photo save permission when prompted.
 6. If screenshot widths differ, the app asks whether to resize other images to the first screenshot width before continuing.
 7. The generated long screenshot is saved to Photos.
+8. Optional verification: long-press the Control Center screen recording button and check whether “长截图录屏” appears as a recording target; this experimental entry-point does not yet auto-generate long screenshots after recording.
 
 The current iPhone app stitches locally on-device. It does not require a server URL or a Windows-hosted stitching service.
