@@ -8,13 +8,15 @@ LongScreenshot 是一个适合普通 Apple ID / 免费账号路径的 iOS 长截
 
 - 从 iPhone 相册手动选择多张截图。
 - 按选择顺序在 iPhone 本地拼接截图。
+- 实验性 ReplayKit 控制中心录屏入口，用于验证“长截图录屏”能否出现在系统录屏目标中。
 - iOS App 将生成的长图保存到系统相册。
 - Codemagic workflow 生成 `LongScreenshot-unsigned.ipa` artifact。
 - Python FastAPI / OpenCV 服务保留为可选的开发和参考工具。
 
 ### 当前限制
 
-- 这个免费账号 MVP 不包含控制中心里的 ReplayKit Broadcast Upload Extension。
+- ReplayKit 控制中心录屏入口仍是实验功能：当前只验证入口和启动，不会在录屏结束后自动生成长截图。
+- 免费 Apple ID / sideload 工具可能无法正确注册或签名录屏扩展；如果控制中心看不到“长截图录屏”，可能需要付费 Apple Developer 账号路径。
 - CI 产出的 IPA 是 unsigned，不能直接安装到 iPhone。
 - 必须用 Sideloadly、AltStore 或 SideStore 等工具重新签名安装。
 - 免费 Apple ID 签名通常会过期，需要定期重新签名。
@@ -85,13 +87,15 @@ LongScreenshot is an iOS long-screenshot MVP designed for the normal Apple ID / 
 
 - Manually select multiple screenshots from the iPhone photo library.
 - Stitch screenshots locally on the iPhone in selection order.
+- Include an experimental ReplayKit Control Center recording entry-point to test whether “长截图录屏” appears as a system recording target.
 - Save the generated long image to the system photo library.
 - Generate a `LongScreenshot-unsigned.ipa` artifact with Codemagic.
 - Keep the Python FastAPI / OpenCV service as optional developer and reference tooling.
 
 ### Current limitations
 
-- This free-account MVP does not include a Control Center ReplayKit Broadcast Upload Extension.
+- The ReplayKit Control Center recording path is experimental: this phase only validates extension discovery and startup, and does not automatically generate a long screenshot after recording.
+- Free Apple ID / sideloading tools may not correctly sign or register the broadcast extension; if Control Center does not show “长截图录屏”, the feature may require a paid Apple Developer account path.
 - The IPA produced by CI is unsigned and cannot be installed directly on an iPhone.
 - A sideloading tool such as Sideloadly, AltStore, or SideStore must re-sign and install the IPA.
 - Free Apple ID signing usually expires and must be refreshed regularly.
