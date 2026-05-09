@@ -45,6 +45,7 @@ public struct LocalImageStitcher: Sendable {
         _ imageData: [Data],
         minOverlap: Int = 20,
         maxOverlap: Int? = nil,
+        resizeMismatchedWidthsToFirst: Bool = false,
         compressionQuality: CGFloat = 0.92
     ) throws -> LocalImageStitchResult {
         guard !imageData.isEmpty else {
@@ -54,7 +55,7 @@ public struct LocalImageStitcher: Sendable {
             throw LocalImageStitchingError.notEnoughImages
         }
 
-        let images = try imageData.map { data -> RGBAImage in
+        var images = try imageData.map { data -> RGBAImage in
             guard let image = UIImage(data: data) else {
                 throw LocalImageStitchingError.unreadableImage
             }
@@ -65,18 +66,25 @@ public struct LocalImageStitcher: Sendable {
             throw LocalImageStitchingError.emptyImages
         }
 
-        guard images.allSatisfy({ $0.width == first.width }) else {
-            throw LocalImageStitchingError.differentWidths
+        if !images.allSatisfy({ $0.width == first.width }) {
+            guard resizeMismatchedWidthsToFirst else {
+                throw LocalImageStitchingError.differentWidths
+            }
+            images = try images.map { try $0.resized(toWidth: first.width) }
         }
 
-        var stitchedBytes = first.bytes
-        var stitchedHeight = first.height
+        guard let normalizedFirst = images.first else {
+            throw LocalImageStitchingError.emptyImages
+        }
+
+        var stitchedBytes = normalizedFirst.bytes
+        var stitchedHeight = normalizedFirst.height
         var overlaps: [Int] = []
 
         for index in images.indices.dropFirst() {
             let previous = images[index - 1]
             let current = images[index]
-            if isVisuallyDuplicate(previous, current) {
+            if hasInsufficientPositionChange(previous, current, minOverlap: minOverlap) {
                 throw LocalImageStitchingError.insufficientNewContent
             }
 
@@ -99,7 +107,7 @@ public struct LocalImageStitcher: Sendable {
             stitchedHeight += current.height - startRow
         }
 
-        guard let cgImage = makeCGImage(width: first.width, height: stitchedHeight, bytes: stitchedBytes),
+        guard let cgImage = makeCGImage(width: normalizedFirst.width, height: stitchedHeight, bytes: stitchedBytes),
               let jpegData = UIImage(cgImage: cgImage).jpegData(compressionQuality: compressionQuality) else {
             throw LocalImageStitchingError.renderingFailed
         }
@@ -114,7 +122,13 @@ public struct LocalImageStitcher: Sendable {
         maxOverlap: Int?
     ) -> Int {
         let maximumAvailableOverlap = min(previous.height, current.height)
-        let highestPossibleOverlap = min(maximumAvailableOverlap, maxOverlap ?? maximumAvailableOverlap)
+        let minimumNewRows = minimumNewContentRows(for: current.height, minOverlap: minOverlap)
+        let maximumOverlapWithNewContent = max(0, current.height - minimumNewRows)
+        let highestPossibleOverlap = min(
+            maximumAvailableOverlap,
+            maxOverlap ?? maximumAvailableOverlap,
+            maximumOverlapWithNewContent
+        )
         let lowestPossibleOverlap = min(max(0, minOverlap), highestPossibleOverlap)
 
         guard highestPossibleOverlap > 0 else {
@@ -123,15 +137,16 @@ public struct LocalImageStitcher: Sendable {
 
         var bestOverlap = lowestPossibleOverlap
         var bestScore = Double.greatestFiniteMagnitude
+        let scoreTolerance = 0.75
 
         for overlap in lowestPossibleOverlap...highestPossibleOverlap {
-            let score = sampledLumaDifference(
+            let score = sampledColorDifference(
                 previous: previous,
                 current: current,
                 overlap: overlap
             )
 
-            if score < bestScore {
+            if score + scoreTolerance < bestScore {
                 bestScore = score
                 bestOverlap = overlap
             }
@@ -140,20 +155,65 @@ public struct LocalImageStitcher: Sendable {
         return bestOverlap
     }
 
-    private func isVisuallyDuplicate(_ previous: RGBAImage, _ current: RGBAImage) -> Bool {
-        previous.width == current.width && previous.height == current.height && previous.bytes == current.bytes
+    private func hasInsufficientPositionChange(_ previous: RGBAImage, _ current: RGBAImage, minOverlap: Int) -> Bool {
+        guard previous.width == current.width, previous.height == current.height else {
+            return false
+        }
+        if previous.bytes == current.bytes {
+            return true
+        }
+        guard !hasLowVerticalVariation(previous), !hasLowVerticalVariation(current) else {
+            return false
+        }
+
+        let minimumChangedRows = minimumNewContentRows(for: current.height, minOverlap: minOverlap)
+        var changedRows = 0
+
+        for row in 0..<current.height {
+            if sampledRowColorDifference(previous: previous, previousRow: row, current: current, currentRow: row) > 2.0 {
+                changedRows += 1
+                if changedRows > minimumChangedRows {
+                    return false
+                }
+            }
+        }
+
+        return true
+    }
+
+    private func hasLowVerticalVariation(_ image: RGBAImage) -> Bool {
+        guard image.height > 1 else {
+            return true
+        }
+
+        let maximumChangedAdjacentRows = max(1, image.height / 20)
+        var changedAdjacentRows = 0
+
+        for row in 1..<image.height {
+            if sampledRowColorDifference(previous: image, previousRow: row - 1, current: image, currentRow: row) > 2.0 {
+                changedAdjacentRows += 1
+                if changedAdjacentRows > maximumChangedAdjacentRows {
+                    return false
+                }
+            }
+        }
+
+        return true
     }
 
     private func minimumNewContentRows(for height: Int, minOverlap: Int) -> Int {
-        min(height, max(1, minOverlap))
+        let minimumRows = max(1, minOverlap)
+        guard height > 8 else {
+            return min(height, minimumRows)
+        }
+        return min(height, max(minimumRows, Int((Double(height) * 0.12).rounded(.up))))
     }
 
-    private func sampledLumaDifference(previous: RGBAImage, current: RGBAImage, overlap: Int) -> Double {
+    private func sampledColorDifference(previous: RGBAImage, current: RGBAImage, overlap: Int) -> Double {
         guard overlap > 0 else {
             return Double.greatestFiniteMagnitude
         }
 
-        let horizontalStep = max(1, previous.width / 80)
         let verticalSamples = min(overlap, 48)
         let firstPreviousRow = previous.height - overlap
         var totalDifference = 0.0
@@ -161,26 +221,45 @@ public struct LocalImageStitcher: Sendable {
 
         for sampleIndex in 0..<verticalSamples {
             let row = verticalSamples == 1 ? 0 : sampleIndex * (overlap - 1) / (verticalSamples - 1)
-            let previousRowOffset = (firstPreviousRow + row) * previous.bytesPerRow
-            let currentRowOffset = row * current.bytesPerRow
-
-            for column in stride(from: 0, to: previous.width, by: horizontalStep) {
-                let previousOffset = previousRowOffset + column * 4
-                let currentOffset = currentRowOffset + column * 4
-
-                totalDifference += abs(luma(at: previousOffset, in: previous.bytes) - luma(at: currentOffset, in: current.bytes))
-                sampleCount += 1
-            }
+            totalDifference += sampledRowColorDifference(
+                previous: previous,
+                previousRow: firstPreviousRow + row,
+                current: current,
+                currentRow: row
+            )
+            sampleCount += 1
         }
 
         return sampleCount == 0 ? Double.greatestFiniteMagnitude : totalDifference / Double(sampleCount)
     }
 
-    private func luma(at offset: Int, in bytes: [UInt8]) -> Double {
-        let red = Double(bytes[offset])
-        let green = Double(bytes[offset + 1])
-        let blue = Double(bytes[offset + 2])
-        return 0.299 * red + 0.587 * green + 0.114 * blue
+    private func sampledRowColorDifference(
+        previous: RGBAImage,
+        previousRow: Int,
+        current: RGBAImage,
+        currentRow: Int
+    ) -> Double {
+        let horizontalStep = max(1, previous.width / 80)
+        let previousRowOffset = previousRow * previous.bytesPerRow
+        let currentRowOffset = currentRow * current.bytesPerRow
+        var totalDifference = 0.0
+        var sampleCount = 0
+
+        for column in stride(from: 0, to: previous.width, by: horizontalStep) {
+            let previousOffset = previousRowOffset + column * 4
+            let currentOffset = currentRowOffset + column * 4
+            totalDifference += colorDifference(previousOffset: previousOffset, currentOffset: currentOffset, previous: previous, current: current)
+            sampleCount += 1
+        }
+
+        return sampleCount == 0 ? Double.greatestFiniteMagnitude : totalDifference / Double(sampleCount)
+    }
+
+    private func colorDifference(previousOffset: Int, currentOffset: Int, previous: RGBAImage, current: RGBAImage) -> Double {
+        let redDifference = abs(Int(previous.bytes[previousOffset]) - Int(current.bytes[currentOffset]))
+        let greenDifference = abs(Int(previous.bytes[previousOffset + 1]) - Int(current.bytes[currentOffset + 1]))
+        let blueDifference = abs(Int(previous.bytes[previousOffset + 2]) - Int(current.bytes[currentOffset + 2]))
+        return Double(redDifference + greenDifference + blueDifference) / 3.0
     }
 
     private func makeCGImage(width: Int, height: Int, bytes: [UInt8]) -> CGImage? {
@@ -239,6 +318,51 @@ private struct RGBAImage {
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
         }
         self.bytes = buffer
+    }
+
+    func resized(toWidth targetWidth: Int) throws -> RGBAImage {
+        guard targetWidth > 0 else {
+            throw LocalImageStitchingError.renderingFailed
+        }
+        guard width != targetWidth else {
+            return self
+        }
+        guard let cgImage = makeCGImage() else {
+            throw LocalImageStitchingError.renderingFailed
+        }
+
+        let targetHeight = max(1, Int((Double(height) * Double(targetWidth) / Double(width)).rounded()))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        let resizedImage = UIGraphicsImageRenderer(
+            size: CGSize(width: CGFloat(targetWidth), height: CGFloat(targetHeight)),
+            format: format
+        ).image { _ in
+            UIImage(cgImage: cgImage).draw(in: CGRect(x: 0, y: 0, width: CGFloat(targetWidth), height: CGFloat(targetHeight)))
+        }
+        return try RGBAImage(image: resizedImage)
+    }
+
+    private func makeCGImage() -> CGImage? {
+        let data = Data(bytes)
+        guard let provider = CGDataProvider(data: data as CFData) else {
+            return nil
+        }
+
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        )
     }
 }
 

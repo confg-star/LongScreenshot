@@ -10,12 +10,12 @@ struct LocalSessionProcessor {
         self.stitcher = stitcher
     }
 
-    func stitch(manifest: ImportSessionManifest) throws -> (data: Data, manifest: ImportSessionManifest) {
+    func stitch(manifest: ImportSessionManifest, resizeMismatchedWidthsToFirst: Bool = false) throws -> (data: Data, manifest: ImportSessionManifest) {
         let orderedImages = manifest.images.sorted { $0.order < $1.order }
         let imageData = try orderedImages.map { image in
             try Data(contentsOf: store.imageURL(sessionID: manifest.sessionID, fileName: image.fileName))
         }
-        let result = try stitcher.stitchImageData(imageData)
+        let result = try stitcher.stitchImageData(imageData, resizeMismatchedWidthsToFirst: resizeMismatchedWidthsToFirst)
         let resultFileName = "result.jpg"
         try result.jpegData.write(to: store.resultURL(sessionID: manifest.sessionID, fileName: resultFileName), options: [.atomic])
 

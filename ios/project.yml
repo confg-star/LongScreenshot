@@ -36,6 +36,7 @@ targets:
       path: LongScreenshotApp/Info.plist
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.longscreenshot.free
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 schemes:
   LongScreenshotShared:
     build:
