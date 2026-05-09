@@ -42,6 +42,7 @@ targets:
       - LongScreenshotApp
     dependencies:
       - target: LongScreenshotShared
+        embed: true
       - target: LongScreenshotBroadcastUploadExtension
         embed: true
     info:
