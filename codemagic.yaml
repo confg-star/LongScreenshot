@@ -101,7 +101,6 @@ workflows:
           rm -rf build/ipa/Payload
           mkdir -p build/ipa/Payload
           cp -R "$APP_PATH" build/ipa/Payload/LongScreenshot.app
-          test -d build/ipa/Payload/LongScreenshot.app/PlugIns/LongScreenshotBroadcastUploadExtension.appex
           cd build/ipa
           zip -r LongScreenshot-unsigned.ipa Payload
     artifacts:
